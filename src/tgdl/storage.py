@@ -7,8 +7,10 @@ dedup/resume. Disempurnakan pada Fase 08 (sidecar JSON, penulisan atomik).
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import re
+import shutil
 import sqlite3
 from pathlib import Path
 
@@ -46,18 +48,30 @@ def media_kind(message: Message) -> str:
     return message.media.value if message.media else "other"
 
 
-def _original_filename(message: Message) -> str:
-    """Tebak nama asli dari media (document/audio/video) atau fallback."""
+# Ekstensi cadangan bila media tak punya file_name / mime_type.
+_EXT_BY_KIND = {
+    "photo": ".jpg",
+    "video": ".mp4",
+    "video_note": ".mp4",
+    "animation": ".mp4",
+    "voice": ".ogg",
+    "audio": ".mp3",
+    "sticker": ".webp",
+}
+
+
+def _real_filename(message: Message) -> str | None:
+    """Nama file asli dari media (document/audio/video/...) bila tersedia."""
     for attr in ("document", "audio", "video", "animation", "voice"):
         media = getattr(message, attr, None)
         fname = getattr(media, "file_name", None) if media is not None else None
         if fname:
             return str(fname)
-    return media_kind(message)
+    return None
 
 
-def _file_size(message: Message) -> int | None:
-    media = (
+def _media_with_mime(message: Message) -> object | None:
+    return (
         message.document
         or message.video
         or message.audio
@@ -65,15 +79,42 @@ def _file_size(message: Message) -> int | None:
         or message.voice
         or message.video_note
     )
+
+
+def guess_extension(message: Message) -> str:
+    """Tebak ekstensi file: dari nama asli -> mime_type -> cadangan per tipe."""
+    real = _real_filename(message)
+    if real:
+        suffix = Path(real).suffix
+        if suffix:
+            return suffix
+    media = _media_with_mime(message)
+    mime = getattr(media, "mime_type", None) if media is not None else None
+    if mime:
+        ext = mimetypes.guess_extension(mime)
+        if ext:
+            return ".jpg" if ext in (".jpe", ".jpeg") else ext
+    return _EXT_BY_KIND.get(media_kind(message), "")
+
+
+def _file_size(message: Message) -> int | None:
+    media = _media_with_mime(message)
     return getattr(media, "file_size", None) if media is not None else None
 
 
 def build_output_path(base: Path, message: Message) -> Path:
-    """Bangun path output deterministik: ``base/<chat_slug>/<tipe>/<id6>_<nama>``."""
+    """Bangun path output deterministik: ``base/<chat_slug>/<tipe>/<id6>_<nama><ext>``."""
     kind = media_kind(message)
     chat_slug = sanitize(message.chat.username or f"id{message.chat.id}")
-    fname = f"{message.id:06d}_{sanitize(_original_filename(message))}"
+    real = _real_filename(message)
+    stem = sanitize(real) if real else kind
+    ext = guess_extension(message)
+    # Hindari ekstensi ganda bila nama asli sudah mengandungnya.
+    if ext and stem.lower().endswith(ext.lower()):
+        stem = stem[: -len(ext)]
+    fname = f"{message.id:06d}_{stem}{ext}"
     return base / chat_slug / kind / fname
+
 
 
 def part_path(dest: Path) -> Path:
@@ -82,8 +123,16 @@ def part_path(dest: Path) -> Path:
 
 
 def finalize_atomic(tmp: Path, dest: Path) -> Path:
-    """Pindahkan file sementara ``tmp`` menjadi ``dest`` secara atomik."""
-    os.replace(tmp, dest)
+    """Pindahkan file sementara ``tmp`` menjadi ``dest``.
+
+    Utamakan ``os.replace`` (atomik, satu drive). Bila gagal karena beda drive
+    (Windows ``[WinError 17]``) atau kasus lintas-filesystem, fallback ke
+    ``shutil.move`` (salin lalu hapus).
+    """
+    try:
+        os.replace(tmp, dest)
+    except OSError:
+        shutil.move(str(tmp), str(dest))
     return dest
 
 

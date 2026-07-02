@@ -75,7 +75,7 @@ async def _download(
 ) -> int:
     settings = load_settings()
     if out is not None:
-        settings.download_dir = Path(out)
+        settings.download_dir = Path(out).expanduser().resolve()
     if concurrency is not None:
         settings.concurrency = concurrency
     configure_logging(log_level or settings.log_level)
@@ -136,9 +136,9 @@ async def _download(
 
 def _print_report(report: downloader.BatchReport) -> None:
     console.print()
-    console.print(f"[green]\u2714 Downloaded:[/] {report.downloaded}")
-    console.print(f"[yellow]\u21b7 Skipped (dedup):[/] {report.skipped}")
-    console.print(f"[red]\u2717 Errors:[/] {report.errors}")
+    console.print(f"[green]Downloaded:[/] {report.downloaded}")
+    console.print(f"[yellow]Skipped (dedup):[/] {report.skipped}")
+    console.print(f"[red]Errors:[/] {report.errors}")
     for item in report.failed:
         console.print(f"  [red]- msg {item.message_id}:[/] {item.error}")
 

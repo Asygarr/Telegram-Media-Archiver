@@ -54,6 +54,13 @@ class Settings(BaseSettings):
             raise ValueError(f"LOG_LEVEL harus salah satu dari {sorted(allowed)}")
         return upper
 
+    @field_validator("download_dir")
+    @classmethod
+    def _resolve_download_dir(cls, value: Path) -> Path:
+        # Absolutkan agar file .part dan tujuan akhir berada di drive yang sama
+        # (mencegah [WinError 17] saat memindahkan antar-drive).
+        return value.expanduser().resolve()
+
 
 def load_settings() -> Settings:
     """Muat dan validasi pengaturan dari environment/`.env`."""

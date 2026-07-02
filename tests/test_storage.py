@@ -24,13 +24,19 @@ def test_sanitize_empty_fallback() -> None:
 def test_build_output_path_deterministic() -> None:
     msg = make_message(kind="photo", msg_id=123, chat_username="grp")
     path = build_output_path(Path("downloads"), msg)
-    assert path == Path("downloads/grp/photo/000123_photo")
+    assert path == Path("downloads/grp/photo/000123_photo.jpg")
 
 
 def test_build_output_path_uses_id_when_no_username() -> None:
     msg = make_message(kind="video", msg_id=7, chat_username=None, chat_id=-42)
     path = build_output_path(Path("downloads"), msg)
-    assert path == Path("downloads/id-42/video/000007_video")
+    assert path == Path("downloads/id-42/video/000007_video.mp4")
+
+
+def test_build_output_path_keeps_original_extension() -> None:
+    msg = make_message(kind="document", msg_id=9, chat_username="grp", file_name="report.pdf")
+    path = build_output_path(Path("downloads"), msg)
+    assert path == Path("downloads/grp/document/000009_report.pdf")
 
 
 def test_dedup_roundtrip(tmp_path: Path) -> None:
