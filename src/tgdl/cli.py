@@ -89,8 +89,9 @@ async def _download(
     storage = Storage(settings.download_dir / "tgdl.db")
 
     async with build_client(settings) as client:
+        target = discovery.normalize_chat(chat)
         messages = discovery.iter_media_messages(
-            client, chat, type_set, limit=limit, min_id=min_id, max_id=max_id
+            client, target, type_set, limit=limit, min_id=min_id, max_id=max_id
         )
 
         if dry_run:
@@ -164,15 +165,16 @@ async def _info(chat: str) -> None:
     settings = load_settings()
     configure_logging(settings.log_level)
     async with build_client(settings) as client:
-        target = await client.get_chat(chat)
+        target = discovery.normalize_chat(chat)
+        target_chat = await client.get_chat(target)
         count = 0
-        async for _ in discovery.iter_media_messages(client, chat):
+        async for _ in discovery.iter_media_messages(client, target):
             count += 1
         table = Table(title="Info Chat")
         table.add_column("Field")
         table.add_column("Value")
-        table.add_row("ID", str(target.id))
-        table.add_row("Title/Username", str(target.title or target.username or "-"))
+        table.add_row("ID", str(target_chat.id))
+        table.add_row("Title/Username", str(target_chat.title or target_chat.username or "-"))
         table.add_row("Kandidat media", str(count))
         console.print(table)
 

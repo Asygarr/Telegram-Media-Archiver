@@ -6,6 +6,7 @@ rentang id, sesuai kontrak arsitektur (Fase 03).
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 
 from pyrogram import Client
@@ -23,6 +24,22 @@ MEDIA_TYPES: dict[str, MessageMediaType] = {
     "animation": MessageMediaType.ANIMATION,
     "sticker": MessageMediaType.STICKER,
 }
+
+
+def normalize_chat(chat: str | int) -> str | int:
+    """Normalisasi target chat.
+
+    ID numerik (mis. ``"-1001234567890"``) dikonversi ke ``int`` agar Pyrogram
+    tidak salah menafsirkannya sebagai nomor telepon (``contacts.ResolvePhone``).
+    Username/link dibiarkan sebagai string.
+    """
+    if isinstance(chat, int):
+        return chat
+    s = chat.strip()
+    if re.fullmatch(r"-?\d+", s):
+        return int(s)
+    return s
+
 
 
 def parse_types(spec: str | None) -> set[MessageMediaType] | None:
@@ -85,7 +102,12 @@ async def iter_media_messages(
     Yields:
         Pesan yang memiliki media dan lolos filter tipe.
     """
-    async for message in client.get_chat_history(chat, limit=limit, offset_id=max_id):
+    kwargs: dict[str, int] = {"limit": limit}
+    if max_id:
+        kwargs["max_id"] = max_id
+    if min_id:
+        kwargs["min_id"] = min_id
+    async for message in client.get_chat_history(chat, **kwargs):
         if min_id and message.id <= min_id:
             break
         if message.media is None:
