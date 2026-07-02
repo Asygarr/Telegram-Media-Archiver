@@ -1,0 +1,32 @@
+# === Secrets & session (JANGAN commit) ===
+.env
+*.session
+*.session-journal
+session_string.txt
+
+# === Output unduhan & database ===
+downloads/
+*.db
+*.sqlite3
+
+# === Python ===
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# === Editor/OS ===
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# AI
+plan/
+.github/

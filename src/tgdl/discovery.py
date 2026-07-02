@@ -1,0 +1,95 @@
+"""Penemuan & filter pesan bermedia pada sebuah chat.
+
+Menyediakan iterasi asinkron atas riwayat pesan dengan filter tipe media dan
+rentang id, sesuai kontrak arsitektur (Fase 03).
+"""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+
+from pyrogram import Client
+from pyrogram.enums import MessageMediaType
+from pyrogram.types import Message
+
+# Peta nama tipe (untuk CLI) -> enum Pyrogram
+MEDIA_TYPES: dict[str, MessageMediaType] = {
+    "photo": MessageMediaType.PHOTO,
+    "video": MessageMediaType.VIDEO,
+    "document": MessageMediaType.DOCUMENT,
+    "audio": MessageMediaType.AUDIO,
+    "voice": MessageMediaType.VOICE,
+    "video_note": MessageMediaType.VIDEO_NOTE,
+    "animation": MessageMediaType.ANIMATION,
+    "sticker": MessageMediaType.STICKER,
+}
+
+
+def parse_types(spec: str | None) -> set[MessageMediaType] | None:
+    """Ubah string ``"photo,video"`` menjadi himpunan enum tipe media.
+
+    Mengembalikan ``None`` bila ``spec`` kosong (artinya semua tipe diterima).
+    """
+    if not spec:
+        return None
+    result: set[MessageMediaType] = set()
+    for raw in spec.split(","):
+        key = raw.strip().lower()
+        if not key:
+            continue
+        if key not in MEDIA_TYPES:
+            valid = ", ".join(sorted(MEDIA_TYPES))
+            raise ValueError(f"Tipe media tidak dikenal: {key!r}. Pilihan: {valid}")
+        result.add(MEDIA_TYPES[key])
+    return result or None
+
+
+def get_media_object(message: Message) -> object | None:
+    """Kembalikan objek media pada pesan (foto/video/dll) atau ``None``."""
+    return (
+        message.photo
+        or message.video
+        or message.document
+        or message.audio
+        or message.voice
+        or message.video_note
+        or message.animation
+        or message.sticker
+    )
+
+
+def get_file_unique_id(message: Message) -> str | None:
+    """Ambil ``file_unique_id`` media pada pesan untuk keperluan dedup."""
+    media = get_media_object(message)
+    return getattr(media, "file_unique_id", None) if media is not None else None
+
+
+async def iter_media_messages(
+    client: Client,
+    chat: str | int,
+    types: set[MessageMediaType] | None = None,
+    limit: int = 0,
+    min_id: int = 0,
+    max_id: int = 0,
+) -> AsyncIterator[Message]:
+    """Iterasi pesan bermedia pada ``chat`` dengan filter opsional.
+
+    Args:
+        client: Pyrogram client aktif.
+        chat: Username, ID numerik, atau link chat target.
+        types: Himpunan tipe media yang diterima (``None`` = semua).
+        limit: Batas jumlah pesan yang dipindai (0 = tanpa batas).
+        min_id: Hanya pesan dengan ``id`` > ``min_id`` (0 = abaikan).
+        max_id: Mulai dari ``id`` ini ke bawah (0 = dari terbaru).
+
+    Yields:
+        Pesan yang memiliki media dan lolos filter tipe.
+    """
+    async for message in client.get_chat_history(chat, limit=limit, offset_id=max_id):
+        if min_id and message.id <= min_id:
+            break
+        if message.media is None:
+            continue
+        if types is not None and message.media not in types:
+            continue
+        yield message
