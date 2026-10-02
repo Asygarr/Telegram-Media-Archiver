@@ -153,6 +153,9 @@ tgdl download -1001234567890 --types photo,video --limit 200 --sidecar
 # Lanjut dari message id tertentu, 5 unduhan paralel
 tgdl download @channel --max-id 5000 --concurrency 5
 
+# Hanya pesan dari Juni 2026 dengan caption mengandung "liburan"
+tgdl download @channel --since 2026-06-01 --until 2026-06-30 --caption-contains liburan
+
 # Daftar dialog yang dapat diakses
 tgdl list
 ```
@@ -163,6 +166,8 @@ tgdl list
 | `--types` | semua | Filter tipe: `photo,video,document,audio,voice,...` |
 | `--limit` | 0 (semua) | Batas jumlah pesan |
 | `--min-id` / `--max-id` | 0 | Rentang message id |
+| `--since` / `--until` | - | Rentang tanggal (`YYYY-MM-DD` atau ISO 8601) |
+| `--caption-contains` | - | Hanya pesan dengan caption mengandung teks ini |
 | `--out` | `downloads` | Direktori output |
 | `--concurrency` | 3 | Unduhan paralel |
 | `--dry-run` | false | List tanpa mengunduh |

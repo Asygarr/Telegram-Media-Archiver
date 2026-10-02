@@ -43,6 +43,15 @@ def download(
     limit: int = typer.Option(0, "--limit", help="Batas jumlah pesan (0 = semua)"),
     min_id: int = typer.Option(0, "--min-id", help="Hanya pesan id > min-id"),
     max_id: int = typer.Option(0, "--max-id", help="Mulai dari id ini ke bawah"),
+    since: str | None = typer.Option(
+        None, "--since", help="Hanya pesan sejak tanggal ini (YYYY-MM-DD atau ISO 8601)"
+    ),
+    until: str | None = typer.Option(
+        None, "--until", help="Hanya pesan sampai tanggal ini (YYYY-MM-DD atau ISO 8601)"
+    ),
+    caption_contains: str | None = typer.Option(
+        None, "--caption-contains", help="Hanya pesan dengan caption mengandung teks ini"
+    ),
     out: str | None = typer.Option(None, "--out", help="Direktori output"),
     concurrency: int | None = typer.Option(None, "--concurrency", help="Unduhan paralel"),
     dry_run: bool = typer.Option(False, "--dry-run", help="List tanpa mengunduh"),
@@ -56,8 +65,8 @@ def download(
     out_dir = Path(out).expanduser().resolve() if out is not None else None
     exit_code = asyncio.run(
         _download(
-            chat, types, limit, min_id, max_id, out_dir, concurrency, dry_run, overwrite,
-            sidecar, log_level,
+            chat, types, limit, min_id, max_id, since, until, caption_contains, out_dir,
+            concurrency, dry_run, overwrite, sidecar, log_level,
         )
     )
     raise typer.Exit(code=exit_code)
@@ -69,6 +78,9 @@ async def _download(
     limit: int,
     min_id: int,
     max_id: int,
+    since: str | None,
+    until: str | None,
+    caption_contains: str | None,
     out_dir: Path | None,
     concurrency: int | None,
     dry_run: bool,
@@ -85,6 +97,8 @@ async def _download(
 
     try:
         type_set = discovery.parse_types(types)
+        since_dt = discovery.parse_date(since) if since else None
+        until_dt = discovery.parse_date(until, end_of_day=True) if until else None
     except ValueError as exc:
         console.print(f"[red]Error:[/] {exc}")
         return 2
@@ -94,7 +108,15 @@ async def _download(
     async with build_client(settings) as client:
         target = discovery.normalize_chat(chat)
         messages = discovery.iter_media_messages(
-            client, target, type_set, limit=limit, min_id=min_id, max_id=max_id
+            client,
+            target,
+            type_set,
+            limit=limit,
+            min_id=min_id,
+            max_id=max_id,
+            since=since_dt,
+            until=until_dt,
+            caption_contains=caption_contains,
         )
 
         if dry_run:

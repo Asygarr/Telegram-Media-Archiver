@@ -1,13 +1,15 @@
 """Penemuan & filter pesan bermedia pada sebuah chat.
 
-Menyediakan iterasi asinkron atas riwayat pesan dengan filter tipe media dan
-rentang id, sesuai kontrak arsitektur (Fase 03).
+Menyediakan iterasi asinkron atas riwayat pesan dengan filter tipe media,
+rentang id, rentang tanggal, dan substring caption, sesuai kontrak arsitektur
+(Fase 03).
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, time
 
 from pyrogram import Client
 from pyrogram.enums import MessageMediaType
@@ -81,6 +83,33 @@ def get_file_unique_id(message: Message) -> str | None:
     return getattr(media, "file_unique_id", None) if media is not None else None
 
 
+def parse_date(spec: str, end_of_day: bool = False) -> datetime:
+    """Ubah string tanggal/waktu menjadi ``datetime`` sadar-zona (UTC).
+
+    Menerima ``"YYYY-MM-DD"``, ``"YYYY-MM-DD HH:MM[:SS]"``, atau ISO 8601 penuh
+    (termasuk offset zona waktu). Bila hanya tanggal yang diberikan (tanpa
+    komponen waktu) dan ``end_of_day=True``, waktu diisi akhir hari
+    (``23:59:59.999999``) alih-alih awal hari — berguna untuk filter ``--until``
+    agar tanggal akhir ikut tercakup penuh.
+
+    Raises:
+        ValueError: Bila format tidak dapat diparse.
+    """
+    s = spec.strip()
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError as exc:
+        raise ValueError(
+            f"Format tanggal tidak valid: {spec!r}. Gunakan YYYY-MM-DD atau ISO 8601."
+        ) from exc
+    date_only = "T" not in s and " " not in s
+    if date_only and end_of_day:
+        dt = datetime.combine(dt.date(), time(23, 59, 59, 999999))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt
+
+
 async def iter_media_messages(
     client: Client,
     chat: str | int,
@@ -88,6 +117,9 @@ async def iter_media_messages(
     limit: int = 0,
     min_id: int = 0,
     max_id: int = 0,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    caption_contains: str | None = None,
 ) -> AsyncIterator[Message]:
     """Iterasi pesan bermedia pada ``chat`` dengan filter opsional.
 
@@ -98,10 +130,15 @@ async def iter_media_messages(
         limit: Batas jumlah pesan yang dipindai (0 = tanpa batas).
         min_id: Hanya pesan dengan ``id`` > ``min_id`` (0 = abaikan).
         max_id: Mulai dari ``id`` ini ke bawah (0 = dari terbaru).
+        since: Hanya pesan dengan ``date`` >= ``since`` (``None`` = abaikan).
+        until: Hanya pesan dengan ``date`` <= ``until`` (``None`` = abaikan).
+        caption_contains: Substring (case-insensitive) yang harus ada pada
+            caption pesan (``None`` = abaikan).
 
     Yields:
-        Pesan yang memiliki media dan lolos filter tipe.
+        Pesan yang memiliki media dan lolos seluruh filter.
     """
+    needle = caption_contains.lower() if caption_contains else None
     async for message in client.get_chat_history(
         chat, limit=limit, max_id=max_id, min_id=min_id
     ):
@@ -110,5 +147,14 @@ async def iter_media_messages(
         if message.media is None:
             continue
         if types is not None and message.media not in types:
+            continue
+        if message.date is not None:
+            # Riwayat diiterasi dari terbaru ke terlama: setelah melewati batas
+            # bawah (`since`) tidak ada lagi pesan yang lolos, aman untuk henti.
+            if since is not None and message.date < since:
+                break
+            if until is not None and message.date > until:
+                continue
+        if needle is not None and needle not in (message.caption or "").lower():
             continue
         yield message

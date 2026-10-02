@@ -51,3 +51,19 @@ def make_message(
 def message_factory():
     """Kembalikan factory ``make_message`` untuk dipakai di test."""
     return make_message
+
+
+class FakeHistoryClient:
+    """Client palsu yang mengembalikan daftar pesan tetap dari ``get_chat_history``.
+
+    Pesan diasumsikan sudah terurut terbaru->terlama (seperti riwayat Pyrogram asli),
+    agar logika early-break pada filter tanggal di ``iter_media_messages`` teruji benar.
+    """
+
+    def __init__(self, messages: list[Any]) -> None:
+        self._messages = messages
+
+    async def get_chat_history(self, chat: Any, **kwargs: Any) -> Any:
+        for msg in self._messages:
+            yield msg
+
