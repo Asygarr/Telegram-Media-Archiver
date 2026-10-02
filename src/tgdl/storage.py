@@ -184,11 +184,25 @@ class Storage:
         self, chat_id: int, message_id: int, file_unique_id: str | None
     ) -> bool:
         cur = self.conn.execute(
-            "SELECT 1 FROM downloads "
+            "SELECT file_path FROM downloads "
             "WHERE chat_id = ? AND message_id = ? AND file_unique_id IS ?",
             (chat_id, message_id, file_unique_id),
         )
-        return cur.fetchone() is not None
+        row = cur.fetchone()
+        if row is None:
+            return False
+        file_path = row[0]
+        # Berkas bisa dihapus manual dari disk; anggap belum terunduh agar
+        # diunduh ulang, dan bersihkan catatan basi.
+        if file_path and Path(file_path).exists():
+            return True
+        self.conn.execute(
+            "DELETE FROM downloads "
+            "WHERE chat_id = ? AND message_id = ? AND file_unique_id IS ?",
+            (chat_id, message_id, file_unique_id),
+        )
+        self.conn.commit()
+        return False
 
     def record(
         self,

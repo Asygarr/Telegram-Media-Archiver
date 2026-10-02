@@ -42,10 +42,28 @@ def test_build_output_path_keeps_original_extension() -> None:
 def test_dedup_roundtrip(tmp_path: Path) -> None:
     db = Storage(tmp_path / "t.db")
     msg = make_message(msg_id=100, fuid="fuidX")
+    f = tmp_path / "f.jpg"
+    f.write_bytes(b"x")
     assert not db.is_downloaded(msg.chat.id, msg.id, "fuidX")
-    db.record(msg.chat.id, msg.id, "fuidX", tmp_path / "f.jpg", msg)
+    db.record(msg.chat.id, msg.id, "fuidX", f, msg)
     assert db.is_downloaded(msg.chat.id, msg.id, "fuidX")
     db.close()
+
+
+def test_dedup_redownloads_when_file_deleted(tmp_path: Path) -> None:
+    db = Storage(tmp_path / "t.db")
+    msg = make_message(msg_id=101, fuid="fuidY")
+    f = tmp_path / "g.jpg"
+    f.write_bytes(b"x")
+    db.record(msg.chat.id, msg.id, "fuidY", f, msg)
+    assert db.is_downloaded(msg.chat.id, msg.id, "fuidY")
+    # Berkas dihapus manual: harus dianggap belum terunduh (diunduh ulang).
+    f.unlink()
+    assert not db.is_downloaded(msg.chat.id, msg.id, "fuidY")
+    # Catatan basi sudah dibersihkan.
+    assert not db.is_downloaded(msg.chat.id, msg.id, "fuidY")
+    db.close()
+
 
 
 def test_write_sidecar(tmp_path: Path) -> None:
