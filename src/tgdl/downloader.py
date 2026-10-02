@@ -18,7 +18,7 @@ from pyrogram.types import Message
 
 from .config import Settings
 from .discovery import get_file_unique_id
-from .ratelimit import safe_download
+from .ratelimit import safe_download, with_floodwait
 from .storage import (
     Storage,
     build_output_path,
@@ -90,6 +90,27 @@ async def download_one(
     except Exception as exc:  # fail-soft: satu item gagal tak menghentikan batch
         log.error("Gagal mengunduh pesan %s: %s", message.id, exc)
         return DownloadResult(message.id, "error", error=str(exc))
+
+
+async def download_thumbnail(client: Client, file_id: str, dest: Path) -> Path | None:
+    """Unduh thumbnail (file_id) ke ``dest`` dengan penanganan FloodWait.
+
+    Fail-soft: kegagalan dicatat dan dikembalikan sebagai ``None`` agar preview
+    tidak berhenti karena satu thumbnail bermasalah.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    async def _download() -> str | None:
+        # kurigram overload-stub tak mengenali pemanggilan file_id -> abaikan.
+        result = await client.download_media(file_id, file_name=str(dest))  # type: ignore[call-overload]
+        return result if isinstance(result, str) else None
+
+    try:
+        path = await with_floodwait(_download)
+    except Exception as exc:  # fail-soft: thumbnail gagal tak menghentikan preview
+        log.warning("Gagal mengunduh thumbnail %s: %s", file_id[:8], exc)
+        return None
+    return Path(path) if path else None
 
 
 def summarize(results: list[DownloadResult]) -> BatchReport:

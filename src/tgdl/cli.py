@@ -26,7 +26,7 @@ from rich.progress import (
 )
 from rich.table import Table
 
-from . import discovery, downloader
+from . import discovery, downloader, preview, webserver
 from .client import build_client
 from .config import load_settings
 from .logging_conf import configure_logging
@@ -226,6 +226,90 @@ async def _list(limit: int) -> None:
                 str(chat.title or chat.username or chat.first_name or "-"),
             )
         console.print(table)
+
+
+@app.command(name="preview")
+def preview_cmd(
+    chat: str = typer.Argument(..., help="Username, ID, atau link chat target"),
+    types: str | None = typer.Option(None, "--types", help="mis. photo,video,document"),
+    limit: int = typer.Option(0, "--limit", help="Batas jumlah pesan (0 = semua)"),
+    min_id: int = typer.Option(0, "--min-id", help="Hanya pesan id > min-id"),
+    max_id: int = typer.Option(0, "--max-id", help="Mulai dari id ini ke bawah"),
+    since: str | None = typer.Option(None, "--since", help="Pesan sejak tanggal (YYYY-MM-DD)"),
+    until: str | None = typer.Option(None, "--until", help="Pesan hingga tanggal (YYYY-MM-DD)"),
+    caption_contains: str | None = typer.Option(
+        None, "--caption-contains", help="Caption mengandung teks (case-insensitive)"
+    ),
+    out: str | None = typer.Option(None, "--out", help="Direktori output"),
+    concurrency: int | None = typer.Option(None, "--concurrency", help="Unduhan paralel"),
+    overwrite: bool = typer.Option(False, "--overwrite", help="Abaikan dedup"),
+    sidecar: bool = typer.Option(False, "--sidecar", help="Tulis metadata .json per media"),
+    port: int = typer.Option(8750, "--port", help="Port web server lokal"),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Jangan buka browser otomatis"),
+    log_level: str | None = typer.Option(None, "--log-level", help="DEBUG/INFO/WARNING/ERROR"),
+) -> None:
+    """Buka gallery preview interaktif untuk memilih & mengunduh media."""
+    out_dir = Path(out).expanduser().resolve() if out is not None else None
+    exit_code = asyncio.run(
+        _preview(
+            chat, types, limit, min_id, max_id, since, until, caption_contains,
+            out_dir, concurrency, overwrite, sidecar, port, no_browser, log_level,
+        )
+    )
+    raise typer.Exit(code=exit_code)
+
+
+async def _preview(
+    chat: str,
+    types: str | None,
+    limit: int,
+    min_id: int,
+    max_id: int,
+    since: str | None,
+    until: str | None,
+    caption_contains: str | None,
+    out_dir: Path | None,
+    concurrency: int | None,
+    overwrite: bool,
+    sidecar: bool,
+    port: int,
+    no_browser: bool,
+    log_level: str | None,
+) -> int:
+    settings = load_settings()
+    if out_dir is not None:
+        settings.download_dir = out_dir
+    if concurrency is not None:
+        settings.concurrency = concurrency
+    configure_logging(log_level or settings.log_level)
+
+    try:
+        type_set = discovery.parse_types(types)
+        since_dt = discovery.parse_date(since) if since else None
+        until_dt = discovery.parse_date(until, end_of_day=True) if until else None
+    except ValueError as exc:
+        console.print(f"[red]Error:[/] {exc}")
+        return 2
+
+    storage = Storage(settings.download_dir / "tgdl.db")
+    async with build_client(settings) as client:
+        console.print("[dim]Memindai media…[/]")
+        result = await preview.collect_items(
+            client, chat, type_set, limit=limit, min_id=min_id, max_id=max_id,
+            since=since_dt, until=until_dt, caption_contains=caption_contains,
+        )
+        if not result.items:
+            console.print("[yellow]Tidak ada media yang cocok.[/]")
+            return 0
+        server = webserver.GalleryServer(
+            client, settings, storage, result, overwrite=overwrite, sidecar=sidecar
+        )
+        console.print(
+            f"[green]{len(result.items)} media ditemukan.[/] "
+            f"Membuka gallery (Ctrl+C atau tombol Selesai untuk berhenti)…"
+        )
+        await webserver.serve(server, port=port, open_browser=not no_browser)
+    return 0
 
 
 if __name__ == "__main__":

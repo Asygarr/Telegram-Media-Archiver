@@ -83,6 +83,21 @@ def get_file_unique_id(message: Message) -> str | None:
     return getattr(media, "file_unique_id", None) if media is not None else None
 
 
+def get_thumb_file_id(message: Message) -> str | None:
+    """Ambil ``file_id`` thumbnail terkecil pada pesan, bila tersedia.
+
+    Urutan: thumbnail terkecil (``media.thumbs[0]``) -> file_id foto itu sendiri
+    -> ``None`` (mis. voice/audio/dokumen tanpa thumbnail).
+    """
+    media = get_media_object(message)
+    thumbs = getattr(media, "thumbs", None)
+    if thumbs:
+        return getattr(thumbs[0], "file_id", None)
+    if message.photo is not None:
+        return getattr(message.photo, "file_id", None)
+    return None
+
+
 def parse_date(spec: str, end_of_day: bool = False) -> datetime:
     """Ubah string tanggal/waktu menjadi ``datetime`` sadar-zona (UTC).
 

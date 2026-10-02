@@ -55,6 +55,17 @@ def require_chat(message: Message) -> Chat:
     return message.chat
 
 
+def chat_slug(message: Message) -> str:
+    """Slug nama folder deterministik untuk chat sebuah pesan."""
+    chat = require_chat(message)
+    return sanitize(chat.username or f"id{chat.id}")
+
+
+def thumb_cache_dir(base: Path, message: Message) -> Path:
+    """Direktori cache thumbnail: ``<base>/<chat_slug>/.thumbs``."""
+    return base / chat_slug(message) / ".thumbs"
+
+
 # Ekstensi cadangan bila media tak punya file_name / mime_type.
 _EXT_BY_KIND = {
     "photo": ".jpg",
@@ -112,8 +123,6 @@ def _file_size(message: Message) -> int | None:
 def build_output_path(base: Path, message: Message) -> Path:
     """Bangun path output deterministik: ``base/<chat_slug>/<tipe>/<id6>_<nama><ext>``."""
     kind = media_kind(message)
-    chat = require_chat(message)
-    chat_slug = sanitize(chat.username or f"id{chat.id}")
     real = _real_filename(message)
     stem = sanitize(real) if real else kind
     ext = guess_extension(message)
@@ -121,7 +130,7 @@ def build_output_path(base: Path, message: Message) -> Path:
     if ext and stem.lower().endswith(ext.lower()):
         stem = stem[: -len(ext)]
     fname = f"{message.id:06d}_{stem}{ext}"
-    return base / chat_slug / kind / fname
+    return base / chat_slug(message) / kind / fname
 
 
 

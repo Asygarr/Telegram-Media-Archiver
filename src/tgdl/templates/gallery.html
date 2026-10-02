@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>tgdl preview — {{TITLE}}</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: #0f1115; color: #e6e8eb;
+    }
+    header {
+      position: sticky; top: 0; z-index: 10; background: #161922;
+      border-bottom: 1px solid #262b36; padding: 12px 20px;
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    }
+    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    header .muted { color: #8b93a1; font-size: 13px; }
+    .spacer { flex: 1; }
+    button {
+      background: #2d6cdf; color: #fff; border: 0; border-radius: 6px;
+      padding: 8px 14px; font-size: 14px; cursor: pointer;
+    }
+    button.secondary { background: #2b303b; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    label.selall { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+    main {
+      display: grid; gap: 14px; padding: 20px;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    }
+    .card {
+      background: #161922; border: 1px solid #262b36; border-radius: 10px;
+      overflow: hidden; display: flex; flex-direction: column;
+    }
+    .card.sel { outline: 2px solid #2d6cdf; }
+    .thumb {
+      position: relative; aspect-ratio: 1/1; background: #0b0d12;
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+    }
+    .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .thumb .placeholder { font-size: 40px; opacity: .5; }
+    .thumb .pick {
+      position: absolute; top: 8px; left: 8px; width: 20px; height: 20px;
+    }
+    .thumb .badge {
+      position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,.65);
+      padding: 2px 6px; border-radius: 4px; font-size: 11px;
+    }
+    .meta { padding: 8px 10px; font-size: 12px; line-height: 1.5; }
+    .meta .cap { color: #b7bdc8; max-height: 3em; overflow: hidden; }
+    .meta .dim { color: #8b93a1; }
+    .status { font-size: 11px; padding: 2px 8px; }
+    .status.ok { color: #4caf50; }
+    .status.skip { color: #c9a227; }
+    .status.error { color: #e5534b; }
+    .status.downloading { color: #2d6cdf; }
+    #progress {
+      position: sticky; bottom: 0; background: #161922; border-top: 1px solid #262b36;
+      padding: 10px 20px; font-size: 13px; display: none;
+    }
+    #progress.show { display: block; }
+    .pbar {
+      height: 8px; background: #0b0d12; border-radius: 5px; overflow: hidden; margin-bottom: 6px;
+    }
+    .pbar span { display: block; height: 100%; background: #2d6cdf; transition: width .3s; }
+    .pinfo { color: #c7cdd8; }
+    .icon { font-size: 40px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>{{TITLE}}</h1>
+    <span class="muted" id="count"></span>
+    <label class="selall"><input type="checkbox" id="selall" /> Pilih semua</label>
+    <div class="spacer"></div>
+    <button id="dl" disabled>Download terpilih</button>
+    <button id="done" class="secondary">Selesai</button>
+  </header>
+
+  <main id="grid"></main>
+
+  <div id="progress"></div>
+
+  <script>
+    const TOKEN = "{{TOKEN}}";
+    const ITEMS = {{ITEMS}};
+    const q = (s) => "?token=" + encodeURIComponent(TOKEN);
+    const selected = new Set();
+
+    const ICON = {
+      photo: "🖼️", video: "🎞️", document: "📄", audio: "🎵",
+      voice: "🎙️", video_note: "⭕", animation: "🎞️", sticker: "🏷️", other: "📦"
+    };
+
+    function human(size) {
+      if (!size) return "";
+      const u = ["B", "KB", "MB", "GB"]; let i = 0, n = size;
+      while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+      return n.toFixed(n < 10 && i > 0 ? 1 : 0) + " " + u[i];
+    }
+    function dur(sec) {
+      if (!sec) return "";
+      const m = Math.floor(sec / 60), s = sec % 60;
+      return m + ":" + String(s).padStart(2, "0");
+    }
+
+    const grid = document.getElementById("grid");
+    const dlBtn = document.getElementById("dl");
+    const countEl = document.getElementById("count");
+
+    function refreshCount() {
+      countEl.textContent = ITEMS.length + " media · " + selected.size + " dipilih";
+      dlBtn.disabled = selected.size === 0;
+    }
+
+    function toggle(id, card) {
+      if (selected.has(id)) { selected.delete(id); card.classList.remove("sel"); }
+      else { selected.add(id); card.classList.add("sel"); }
+      card.querySelector(".pick").checked = selected.has(id);
+      refreshCount();
+    }
+
+    for (const it of ITEMS) {
+      const card = document.createElement("div");
+      card.className = "card";
+      const dim = [it.width && it.height ? it.width + "×" + it.height : "",
+                   dur(it.duration), human(it.size)].filter(Boolean).join(" · ");
+      const thumbInner = it.has_thumb
+        ? `<img loading="lazy" src="/thumb/${it.message_id}${q()}" alt="" />`
+        : `<span class="placeholder">${ICON[it.type] || ICON.other}</span>`;
+      card.innerHTML = `
+        <div class="thumb">
+          <input type="checkbox" class="pick" />
+          ${thumbInner}
+          <span class="badge">${it.type}</span>
+        </div>
+        <div class="meta">
+          <div class="dim">#${it.message_id} ${dim}</div>
+          <div class="cap">${(it.caption || "").replace(/</g, "&lt;")}</div>
+          <div class="status" data-id="${it.message_id}"></div>
+        </div>`;
+      card.querySelector(".thumb").addEventListener("click", (e) => {
+        if (e.target.classList.contains("pick")) return;
+        toggle(it.message_id, card);
+      });
+      card.querySelector(".pick").addEventListener("change", () =>
+        toggle(it.message_id, card));
+      grid.appendChild(card);
+    }
+    refreshCount();
+
+    document.getElementById("selall").addEventListener("change", (e) => {
+      selected.clear();
+      document.querySelectorAll(".card").forEach((card, i) => {
+        if (e.target.checked) { selected.add(ITEMS[i].message_id); card.classList.add("sel"); }
+        else card.classList.remove("sel");
+        card.querySelector(".pick").checked = e.target.checked;
+      });
+      refreshCount();
+    });
+
+    const prog = document.getElementById("progress");
+    const doneBtn = document.getElementById("done");
+    let poll = null;
+    let jobActive = false;
+
+    function renderProgress(data) {
+      const c = data.counts;
+      const total = Object.keys(data.items).length;
+      const finished = c.downloaded + c.skipped + c.errors;
+      const pct = total ? Math.floor((finished / total) * 100) : 0;
+      prog.classList.add("show");
+      prog.innerHTML =
+        `<div class="pbar"><span style="width:${pct}%"></span></div>`
+        + `<div class="pinfo"><b>${finished}/${total}</b> selesai`
+        + ` · ⬇️ ${c.downloaded} unduh · ⏭️ ${c.skipped} lewati`
+        + ` · ⚠️ ${c.errors} error`
+        + (data.done ? "  — <b>selesai</b>" : ` · ⚙️ ${c.pending} berjalan…`)
+        + `</div>`;
+      for (const [id, e] of Object.entries(data.items)) {
+        const el = document.querySelector(`.status[data-id="${id}"]`);
+        if (!el) continue;
+        el.className = "status " + e.status;
+        if (e.status === "downloading" && e.total)
+          el.textContent = Math.floor((e.current / e.total) * 100) + "%";
+        else el.textContent = e.status + (e.error ? ": " + e.error : "");
+      }
+      if (data.done && poll) {
+        clearInterval(poll); poll = null; jobActive = false;
+        dlBtn.disabled = selected.size === 0;
+        doneBtn.disabled = false;
+        doneBtn.textContent = "Selesai";
+      }
+    }
+
+    dlBtn.addEventListener("click", async () => {
+      if (selected.size === 0) return;
+      dlBtn.disabled = true;
+      const res = await fetch("/download" + q(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [...selected] })
+      });
+      if (!res.ok) { alert("Gagal memulai unduhan"); dlBtn.disabled = false; return; }
+      jobActive = true;
+      doneBtn.disabled = true;
+      doneBtn.textContent = "Mengunduh…";
+      if (poll) clearInterval(poll);
+      poll = setInterval(async () => {
+        const p = await fetch("/progress" + q());
+        if (p.ok) renderProgress(await p.json());
+      }, 800);
+    });
+
+    document.getElementById("done").addEventListener("click", async () => {
+      if (jobActive &&
+          !confirm("Unduhan masih berjalan. Server akan menunggu hingga selesai sebelum berhenti. Lanjutkan?"))
+        return;
+      await fetch("/shutdown" + q(), { method: "POST" });
+      document.body.innerHTML =
+        "<p style='padding:40px'>Server dihentikan. Jika masih ada unduhan berjalan, "
+        + "tunggu hingga selesai di terminal sebelum menutup. Anda bisa menutup tab ini.</p>";
+    });
+  </script>
+</body>
+</html>

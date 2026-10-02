@@ -156,6 +156,9 @@ tgdl download @channel --max-id 5000 --concurrency 5
 # Hanya pesan dari Juni 2026 dengan caption mengandung "liburan"
 tgdl download @channel --since 2026-06-01 --until 2026-06-30 --caption-contains liburan
 
+# Buka gallery preview interaktif di browser: pilih media lalu klik Download
+tgdl preview @channel --types photo,video
+
 # Daftar dialog yang dapat diakses
 tgdl list
 ```
@@ -178,7 +181,18 @@ tgdl list
 Hasil tersimpan di `downloads/<chat>/<tipe>/<message_id>_<nama>`. Menjalankan ulang hanya mengunduh
 media baru (dedup), dan proses yang terputus dapat dilanjutkan (resume).
 
+### Gallery preview (`preview`)
+`tgdl preview <chat>` memindai media lalu membuka **gallery di browser** (web server lokal
+`127.0.0.1`). Thumbnail dimuat *lazy on-demand* (diunduh saat ditampilkan, lalu di-cache).
+Centang media yang diinginkan, klik **Download terpilih**, dan progres tampil langsung di
+halaman. Tombol **Selesai** (atau `Ctrl+C`) menghentikan server.
+
+Mendukung filter yang sama dengan `download` (`--types`, `--limit`, `--min-id`/`--max-id`,
+`--since`/`--until`, `--caption-contains`) plus `--port` (default `8750`) dan `--no-browser`.
+Hanya media yang dipilih yang diunduh — dedup & resume tetap berlaku.
+
 ---
+
 
 ## 7. Pengembangan & Kualitas
 ```bash
