@@ -34,4 +34,5 @@ async def export_session_string(settings: Settings) -> str:
     ) as app:
         me = await app.get_me()
         log.info("Login berhasil sebagai user id=%s", me.id)
-        return await app.export_session_string()
+        session = await app.export_session_string()
+        return str(session)

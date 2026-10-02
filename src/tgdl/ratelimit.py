@@ -19,6 +19,8 @@ from pyrogram import Client
 from pyrogram.errors import FileReferenceExpired, FloodWait
 from pyrogram.types import Message
 
+from .storage import require_chat
+
 log = logging.getLogger("tgdl.ratelimit")
 
 T = TypeVar("T")
@@ -99,12 +101,19 @@ async def safe_download(
     unduhan dicoba kembali.
     """
 
-    def _download(msg: Message) -> Awaitable[str | None]:
-        return client.download_media(msg, file_name=file_name, progress=progress)
+    async def _download(msg: Message) -> str | None:
+        result = await client.download_media(msg, file_name=file_name, progress=progress)
+        if isinstance(result, list):  # terjadi hanya saat input berupa list pesan
+            raise TypeError("download_media mengembalikan list untuk pesan tunggal")
+        return result
 
     try:
         return await with_floodwait(lambda: _download(message))
     except FileReferenceExpired:
         log.warning("FileReferenceExpired pada pesan %s — mengambil ulang", message.id)
-        fresh = await client.get_messages(message.chat.id, message.id)
+        chat = require_chat(message)
+        fresh = await client.get_messages(chat.id, message.id)
+        if not isinstance(fresh, Message):
+            msg = f"get_messages tidak mengembalikan pesan untuk {message.id}"
+            raise RuntimeError(msg) from None
         return await with_floodwait(lambda: _download(fresh))

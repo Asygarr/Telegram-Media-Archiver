@@ -22,9 +22,10 @@ def _fake_client(tmp_path: Path) -> AsyncMock:
     client = AsyncMock()
 
     async def fake_download(message, file_name, progress=None):  # type: ignore[no-untyped-def]
+        # noqa: ASYNC240 -- fixture mocks Pyrogram's download_media; trivial local writes only.
         p = Path(file_name)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_bytes(b"data")
+        p.parent.mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240
+        p.write_bytes(b"data")  # noqa: ASYNC240
         return str(p)
 
     client.download_media = AsyncMock(side_effect=fake_download)
@@ -41,7 +42,7 @@ async def test_download_one_ok(tmp_path: Path) -> None:
     result = await download_one(client, msg, settings, storage)
 
     assert result.status == "ok"
-    assert Path(result.path).exists()
+    assert Path(result.path).exists()  # noqa: ASYNC240
     client.download_media.assert_awaited_once()
     storage.close()
 

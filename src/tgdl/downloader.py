@@ -19,7 +19,14 @@ from pyrogram.types import Message
 from .config import Settings
 from .discovery import get_file_unique_id
 from .ratelimit import safe_download
-from .storage import Storage, build_output_path, finalize_atomic, part_path, write_sidecar
+from .storage import (
+    Storage,
+    build_output_path,
+    finalize_atomic,
+    part_path,
+    require_chat,
+    write_sidecar,
+)
 
 log = logging.getLogger("tgdl.downloader")
 
@@ -61,7 +68,10 @@ async def download_one(
     tujuan akhir, mencegah file korup bila proses terputus.
     """
     fuid = get_file_unique_id(message)
-    if not overwrite and storage.is_downloaded(message.chat.id, message.id, fuid):
+    chat = require_chat(message)
+    assert chat.id is not None
+    chat_id = chat.id
+    if not overwrite and storage.is_downloaded(chat_id, message.id, fuid):
         return DownloadResult(message.id, "skip")
 
     dest = build_output_path(settings.download_dir, message)
@@ -75,7 +85,7 @@ async def download_one(
         finalize_atomic(Path(path), dest)
         if sidecar:
             write_sidecar(dest, message)
-        storage.record(message.chat.id, message.id, fuid, dest, message)
+        storage.record(chat_id, message.id, fuid, dest, message)
         return DownloadResult(message.id, "ok", path=str(dest))
     except Exception as exc:  # fail-soft: satu item gagal tak menghentikan batch
         log.error("Gagal mengunduh pesan %s: %s", message.id, exc)

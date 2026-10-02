@@ -102,12 +102,9 @@ async def iter_media_messages(
     Yields:
         Pesan yang memiliki media dan lolos filter tipe.
     """
-    kwargs: dict[str, int] = {"limit": limit}
-    if max_id:
-        kwargs["max_id"] = max_id
-    if min_id:
-        kwargs["min_id"] = min_id
-    async for message in client.get_chat_history(chat, **kwargs):
+    async for message in client.get_chat_history(
+        chat, limit=limit, max_id=max_id, min_id=min_id
+    ):
         if min_id and message.id <= min_id:
             break
         if message.media is None:

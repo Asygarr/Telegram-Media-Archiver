@@ -51,9 +51,12 @@ def download(
     log_level: str | None = typer.Option(None, "--log-level", help="DEBUG/INFO/WARNING/ERROR"),
 ) -> None:
     """Unduh media dari sebuah chat Telegram."""
+    # Resolusi path dilakukan di luar event loop karena melibatkan I/O blocking
+    # (stat filesystem via Path.resolve()).
+    out_dir = Path(out).expanduser().resolve() if out is not None else None
     exit_code = asyncio.run(
         _download(
-            chat, types, limit, min_id, max_id, out, concurrency, dry_run, overwrite,
+            chat, types, limit, min_id, max_id, out_dir, concurrency, dry_run, overwrite,
             sidecar, log_level,
         )
     )
@@ -66,7 +69,7 @@ async def _download(
     limit: int,
     min_id: int,
     max_id: int,
-    out: str | None,
+    out_dir: Path | None,
     concurrency: int | None,
     dry_run: bool,
     overwrite: bool,
@@ -74,8 +77,8 @@ async def _download(
     log_level: str | None,
 ) -> int:
     settings = load_settings()
-    if out is not None:
-        settings.download_dir = Path(out).expanduser().resolve()
+    if out_dir is not None:
+        settings.download_dir = out_dir
     if concurrency is not None:
         settings.concurrency = concurrency
     configure_logging(log_level or settings.log_level)

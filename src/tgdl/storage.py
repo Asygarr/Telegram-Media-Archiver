@@ -14,7 +14,7 @@ import shutil
 import sqlite3
 from pathlib import Path
 
-from pyrogram.types import Message
+from pyrogram.types import Chat, Message
 
 _ILLEGAL = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -46,6 +46,13 @@ def sanitize(name: str, max_len: int = 120) -> str:
 def media_kind(message: Message) -> str:
     """Nama tipe media pesan (untuk subfolder)."""
     return message.media.value if message.media else "other"
+
+
+def require_chat(message: Message) -> Chat:
+    """Kembalikan ``message.chat``, menolak pesan tanpa chat (seharusnya tak terjadi)."""
+    if message.chat is None:
+        raise ValueError(f"Pesan {message.id} tidak memiliki chat")
+    return message.chat
 
 
 # Ekstensi cadangan bila media tak punya file_name / mime_type.
@@ -105,7 +112,8 @@ def _file_size(message: Message) -> int | None:
 def build_output_path(base: Path, message: Message) -> Path:
     """Bangun path output deterministik: ``base/<chat_slug>/<tipe>/<id6>_<nama><ext>``."""
     kind = media_kind(message)
-    chat_slug = sanitize(message.chat.username or f"id{message.chat.id}")
+    chat = require_chat(message)
+    chat_slug = sanitize(chat.username or f"id{chat.id}")
     real = _real_filename(message)
     stem = sanitize(real) if real else kind
     ext = guess_extension(message)
@@ -138,10 +146,11 @@ def finalize_atomic(tmp: Path, dest: Path) -> Path:
 
 def write_sidecar(dest: Path, message: Message) -> Path:
     """Tulis metadata media ke sidecar ``<dest>.json`` (FR-14)."""
+    chat = require_chat(message)
     meta = {
         "message_id": message.id,
-        "chat": message.chat.username or f"id{message.chat.id}",
-        "chat_id": message.chat.id,
+        "chat": chat.username or f"id{chat.id}",
+        "chat_id": chat.id,
         "date": str(message.date) if message.date else None,
         "sender_id": getattr(message.from_user, "id", None),
         "caption": message.caption or "",
